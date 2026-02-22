@@ -1,2 +1,18 @@
-<h2>'스마트 저전력 표지판' 기술 개선 프로젝트 </h2> <br>
-‘스마트 저전력 표지판(24.03.02 ~ 24.11.08)’ 프로젝트의 치명적 결함 및 기술 보완의 필요성을 느끼고 시작하는 기술 보완 프로젝트
+# 🚀 IoT Legacy Renewal: Security & Communication
+
+기존 PHP 기반 IoT 시스템의 보안 취약점을 분석하고, MQTT와 Node.js를 활용하여 보안이 강화된 양방향 통신 시스템으로 현대화합니다.
+
+## 1. 🔍 Legacy 문제점
+- DB 접속 정보 평문 노출 및 SQL Injection 위험.
+- HTTP 프로토콜 사용으로 인한 통신 오버헤드.
+
+## 🏗️ 2. 신규 아키텍처
+- **Client:** C (MQTT Pub/Sub)
+- **Broker:** Mosquitto
+- **Server:** Node.js (Business Logic & MySQL)
+- **Storage:** MySQL (Data), Local File (System Log)
+
+## 🎯 3. 주요 시나리오
+1. C 클라이언트가 10자 이내 문자열 전송.
+2. 서버에서 데이터 가공 후 에코(Echo) 메시지 반환.
+3. 데이터베이스 백업 및 시스템 로그 기록.
