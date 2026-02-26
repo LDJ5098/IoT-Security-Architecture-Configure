@@ -1,0 +1,23 @@
+services:
+  # 1. MQTT 브로커
+  mqtt:
+    image: eclipse-mosquitto:latest
+    container_name: mqtt-broker
+    ports:
+      - "1883:1883"
+    networks:
+      - compose-net
+
+  # 2. 데이터베이스
+  database:
+    image: mariadb:latest
+    container_name: database
+    environment:
+      MARIADB_ROOT_PASSWORD: root_password # 나중에 CI/CD 메모리 주입으로 바꿀 부분
+      MARIADB_DATABASE: MainDB
+    networks:
+      - compose-net
+
+networks:
+  compose-net:
+    driver: bridge
