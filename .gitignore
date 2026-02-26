@@ -1,1 +1,11 @@
 부가 요소/
+
+# Node.js 도구들 (용량 문제)
+node_modules/
+
+# MariaDB 데이터 (개인 정보/보안)
+server-docker-compose/mariadb/*
+!server-docker-compose/mariadb/.gitkeep
+
+# 마스터 키 (비밀번호 보안)
+.env
