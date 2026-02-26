@@ -1,11 +1,21 @@
-부가 요소/
+#프로젝트 부가요소
+부가 요소/*
 
-# Node.js 도구들 (용량 문제)
-node_modules/
+# Node.js & TypeScript (기술 스택 관련)
+node_modules/*
+dist/
+*.tsbuildinfo
 
-# MariaDB 데이터 (개인 정보/보안)
+# MariaDB & Docker (인프라 관련)
 server-docker-compose/mariadb/*
 !server-docker-compose/mariadb/.gitkeep
-
-# 마스터 키 (비밀번호 보안)
 .env
+
+#작업도구
+.vs/
+.vscode/
+
+#기타 임시 파일
+*.log
+.DS_Store
+Thumbs.db
