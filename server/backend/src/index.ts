@@ -39,8 +39,9 @@ client.on('message', async (topic, message) => {
 
   try {
     // DeviceLog 테이블에 저장 (저장 완료까지 대기)
+    const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
     await prisma.deviceLog.create({
-      data: { device_id, code }
+      data: { device_id, code, created_at: kst }
     });
     console.log(`DB 저장 완료 - device_id: ${device_id}, code: ${code}`);
 

@@ -28,11 +28,22 @@ int main() {
     // 응답 콜백 등록
     MQTTClient_setCallbacks(client, NULL, NULL, messageArrived, NULL);
 
-    int rc = MQTTClient_connect(client, &opts);
+    // 브로커 연결 재시도 (최대 5번)
+    int rc;
+    int max_retry = 5;
+    int attempt = 1;
+    while ((rc = MQTTClient_connect(client, &opts)) != 0 && attempt <= max_retry) {
+        printf("브로커 연결 실패 (%d/%d), 3초 후 재시도...\n", attempt, max_retry);
+        sleep(3);
+        attempt++;
+    }
+
     if (rc != 0) {
-        printf("서버 연결 실패! (에러 코드: %d)\n", rc);
+        printf("브로커 연결 최종 실패! (%d번 시도, 에러 코드: %d)\n", max_retry, rc);
         return -1;
     }
+
+    printf("브로커 연결 성공! (%d번째 시도)\n", attempt);
 
     // 응답 토픽 구독
     MQTTClient_subscribe(client, "device/response", 0);

@@ -1,0 +1,58 @@
+services:
+  # 1. MQTT 브로커 (우체국)
+  mqtt:
+    image: eclipse-mosquitto:latest
+    container_name: mqtt-broker
+    ports:
+      # OS역할로 compose이기 때문에 외부, 내부망 포트 번호를 전부 환경변수처리
+      - "${MQTT_EXT_PORT}:${MQTT_INT_PORT}"
+    volumes:
+      # 설정 파일 매핑 (읽기 전용: ro)
+      - ./mosquitto/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+      # 로그 파일을 내 컴퓨터의 볼륨으로 빼내기
+      - ./mosquitto/log:/mosquitto/log
+    command: sh /docker-entrypoint.sh
+    environment:
+      MQTT_INT_PORT: ${MQTT_INT_PORT}
+    networks:
+      - compose-net
+
+  # 2. 데이터베이스 (금고)
+  database:
+    image: mariadb:latest
+    container_name: database
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_NAME}
+      TZ: Asia/Seoul
+    volumes:
+      # DB 실제 데이터를 server/mariadb 폴더에 영구 보존
+      # (Docker Compose를 OS로 취급 - OS 내부 스토리지 영역)
+      - ./mariadb:/var/lib/mysql
+    healthcheck:
+      # DB가 실제로 응답 가능한 상태인지 체크
+      test: ["CMD", "healthcheck.sh", "--connect"]
+      interval: 5s   # 5초마다 체크
+      timeout: 3s    # 3초 안에 응답 없으면 실패
+      retries: 5     # 5번 실패하면 unhealthy 판정
+    networks:
+      - compose-net
+
+  # 3. 백엔드 서버
+  backend:
+    build: ./backend
+    container_name: backend
+    environment:
+      MQTT_INT_PORT: ${MQTT_INT_PORT}
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      mqtt:
+        condition: service_started   # mqtt는 시작됐을 때
+      database:
+        condition: service_healthy   # database는 healthy 상태일 때
+    networks:
+      - compose-net
+
+networks:
+  compose-net:
+    driver: bridge
