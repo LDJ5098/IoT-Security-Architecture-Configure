@@ -1,5 +1,5 @@
 services:
-  # 1. MQTT 브로커 (우체국)
+  # 1. MQTT 브로커
   mqtt:
     image: eclipse-mosquitto:latest
     container_name: mqtt-broker
