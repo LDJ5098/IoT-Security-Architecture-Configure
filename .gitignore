@@ -1,25 +1,45 @@
-#프로젝트 부가요소
-부가 요소/*
+# =========================================================
+# 1. 보안 핵심 자산 (Zero Trust)
+# =========================================================
+# 어떤 폴더 아래에 있든 인증서 관련 파일은 절대 금지
+**/certs/*.key
+**/certs/*.crt
+**/certs/*.pem
+**/certs/*.srl
+**/certs/*.csr
+**/certs/*.p12
 
-# 인증서 파일 (보안상 Git에 올리면 안됨)
-server/mosquitto/certs/*
-c-client-device/certs/*
-
-# Node.js & TypeScript (기술 스택 관련)
-node_modules/*
-dist/
-*.tsbuildinfo
-
-# MariaDB & Docker (인프라 관련)
-server-docker-compose/mariadb/*
-!server-docker-compose/mariadb/.gitkeep
+# 환경 변수 및 비밀번호 (실전용 데이터 보호)
 .env
+*.env
+**/.env.*
+!**/*.env.example
 
-#작업도구
-.vs/
-.vscode/
+# =========================================================
+# 2. 인프라 런타임 데이터 (Persistence Separation)
+# =========================================================
+# MariaDB 데이터 실체 (이미 추적 중이라면 캐시 삭제 필요)
+**/mariadb/**
 
-#기타 임시 파일
-*.log
+# Mosquitto 로그 및 런타임 설정 찌꺼기
+**/mosquitto/log/*.log
+**/mosquitto/runtime/*
+
+# =========================================================
+# 3. 개발 및 빌드 결과물 (Artifacts)
+# =========================================================
+node_modules/
+**/dist/
+**/build/
+**/out/
+*.o
+*.out
+*.exe
 .DS_Store
 Thumbs.db
+
+# =========================================================
+# 4. 프로젝트 특이 사항
+# =========================================================
+# (선택) 임시로 생성한 gen-key.sh 결과물이나 테스트용 데이터
+test-results/
