@@ -5,9 +5,6 @@
 server/mosquitto/certs/*
 c-client-device/certs/*
 
-# generate-certs.sh 는 제외 (스크립트)
-!server/mosquitto/certs/generate-certs.sh
-
 # Node.js & TypeScript (기술 스택 관련)
 node_modules/*
 dist/
