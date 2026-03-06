@@ -16,3 +16,5 @@ WORKDIR /app
 
 # 4. 컨테이너 시작 시 컴파일 후 실행
 CMD sh -c "gcc /app/device.c -o /app/app -lpaho-mqtt3cs -DMQTT_PORT=${MQTT_PORT} && /app/app"
+
+#CI/CD 테스트용 주석
