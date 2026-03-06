@@ -19,13 +19,15 @@ int messageArrived(void* context, char* topicName, int topicLen, MQTTClient_mess
 int main() {
     srand(time(NULL));
     MQTTClient client;
+    char mqtt_uri[128];
     char hostname[100];
     gethostname(hostname, 100);
 
+    sprintf(mqtt_uri, "ssl://host.docker.internal:%d", MQTT_PORT);
     printf("[*] 디바이스 ID: %s\n", hostname);
 
     //MQTTClient_create(&client, "tcp://host.docker.internal:5098", hostname, MQTTCLIENT_PERSISTENCE_NONE, NULL); //평문 (테스트완료)
-    MQTTClient_create(&client, "ssl://host.docker.internal:9883", hostname, MQTTCLIENT_PERSISTENCE_NONE, NULL); // TLS 연결
+    MQTTClient_create(&client, mqtt_uri, hostname, MQTTCLIENT_PERSISTENCE_NONE, NULL); // mTLS 연결
     MQTTClient_connectOptions opts = MQTTClient_connectOptions_initializer;
 
     // mTLS 옵션
@@ -45,7 +47,7 @@ int main() {
     int rc;
     int max_retry = 5;
     int attempt = 1;
-    printf("[*] 브로커 연결 시도: ssl://host.docker.internal:9883\n");
+    printf("[*] 브로커 연결 시도: %s\n", mqtt_uri);
     while ((rc = MQTTClient_connect(client, &opts)) != 0 && attempt <= max_retry) {
         printf("[!] 브로커 연결 실패 (%d/%d) → 에러 코드: %d, 3초 후 재시도...\n", attempt, max_retry, rc);
         sleep(3);

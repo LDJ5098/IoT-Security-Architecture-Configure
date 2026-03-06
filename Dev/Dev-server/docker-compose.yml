@@ -2,7 +2,7 @@ services:
   # 1. MQTT 브로커
   mqtt:
     image: eclipse-mosquitto:latest
-    container_name: mqtt-broker
+    container_name: ${TAG}-mqtt-broker
     ports:
       # - "${MQTT_EXT_PORT}:${MQTT_INT_PORT}"        # 평문 포트 (테스트 완료, 외부 접근 차단)
       - "${MQTT_TLS_EXT_PORT}:${MQTT_TLS_INT_PORT}"  # TLS 포트
@@ -20,7 +20,7 @@ services:
   # 2. 데이터베이스 (금고)
   database:
     image: mariadb:latest
-    container_name: database
+    container_name: ${TAG}-database
     command: --port=${DB_PORT}
     environment:
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
@@ -45,7 +45,7 @@ services:
   # 3. 백엔드 서버
   backend:
     build: ./backend
-    container_name: backend
+    container_name: ${TAG}-backend
     environment:
       MQTT_INT_PORT: ${MQTT_INT_PORT}
       DATABASE_URL: ${DATABASE_URL}
@@ -54,6 +54,27 @@ services:
         condition: service_started   # mqtt는 시작됐을 때
       database:
         condition: service_healthy   # database는 healthy 상태일 때
+    networks:
+      - compose-net
+
+  # 4. SSH
+  ssh:
+    image: lscr.io/linuxserver/openssh-server:latest
+    container_name: ${TAG}-ssh
+    environment:
+      - USER_NAME=${SSH_USER}
+      - PUBLIC_KEY_FILE=/pubkey/1-LEVEL-KEY.pub
+
+      - SUDO_ACCESS=false
+    ports:
+      - "${SSH_EXT_PORT}:2222"
+    volumes:
+      - ./ssh-key/1-LEVEL-KEY.pub:/pubkey/1-LEVEL-KEY.pub:ro
+
+      #SSH로 관리할 대상 컨테이너(폴더) #certs 제외
+      - ./mosquitto/docker-entrypoint.sh:/mosquitto/docker-entrypoint.sh:ro
+      - ./mosquitto/log:/mosquitto/log:ro                                   
+      - ./backend:/backend:ro
     networks:
       - compose-net
 
