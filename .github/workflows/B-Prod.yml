@@ -1,0 +1,21 @@
+
+name: B-Prod (Backend 배포)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dev/Dev-server/backend/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: C 관리자 검증 대기
+        run: |
+          echo "배포 요청 대기 중... (C 관리자 승인 필요)"
+          # 추후 Discord 웹훅 + 승인 로직 추가
