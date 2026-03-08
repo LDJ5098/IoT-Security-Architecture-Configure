@@ -1,0 +1,15 @@
+ services:
+  # GitHub Actions Runner (B-Dev)
+  runner:
+    image: ghcr.io/actions/actions-runner:latest
+    container_name: ${TAG}-runner
+    entrypoint: /runner/runner-entrypoint.sh
+    environment:
+      - REPO_URL=https://github.com/LDJ5098/IoT-Security-Architecture-Configure
+      - RUNNER_NAME=${TAG}-runner
+      - ACCESS_TOKEN=${RUNNER_PAT}
+      - RUNNER_WORKDIR=/tmp/runner
+      - LABELS=c-client-device
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./runner:/runner

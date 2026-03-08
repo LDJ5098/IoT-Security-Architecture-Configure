@@ -1,0 +1,42 @@
+services:
+  # 1. SSH
+  ssh:
+    image: lscr.io/linuxserver/openssh-server:latest
+    container_name: ${TAG}-ssh
+    environment:
+      - USER_NAME=${SSH_USER}
+      - PUBLIC_KEY_FILE=/pubkey/1-LEVEL-KEY.pub
+
+      - SUDO_ACCESS=false
+    ports:
+      - "${SSH_EXT_PORT}:2222"
+    volumes:
+      - ./ssh-key/1-LEVEL-KEY.pub:/pubkey/1-LEVEL-KEY.pub:ro
+
+      #SSH로 관리할 대상 컨테이너(폴더) #certs 제외
+      - ./mosquitto/docker-entrypoint.sh:/mosquitto/docker-entrypoint.sh:ro
+      - ./mosquitto/log:/mosquitto/log:ro                                   
+      - ./backend:/backend:ro
+    networks:
+      - compose-net
+  
+  # 2. GitHub Actions Runner (B-Prod)
+  runner:
+    image: ghcr.io/actions/actions-runner:latest
+    container_name: ${TAG}-runner
+    entrypoint: /runner/runner-entrypoint.sh          # 커스텀 스크립트 주입
+    environment:
+      - REPO_URL=https://github.com/LDJ5098/IoT-Security-Architecture-Configure
+      - RUNNER_NAME=${TAG}-runner
+      - ACCESS_TOKEN=${RUNNER_PAT}             # PAT으로 Runner Token 자동 발급
+      - RUNNER_WORKDIR=/tmp/runner
+      - LABELS=infra-server
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./runner:/runner                        # runner 폴더 마운트
+    networks:
+      - compose-net
+
+networks:
+  compose-net:
+    external: true
