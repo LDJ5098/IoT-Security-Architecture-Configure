@@ -30,7 +30,7 @@ services:
       - RUNNER_NAME=${TAG}-runner
       - ACCESS_TOKEN=${RUNNER_PAT}             # PAT으로 Runner Token 자동 발급
       - RUNNER_WORKDIR=/tmp/runner
-      - LABELS=infra-server
+      - LABELS=server-runner
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./runner:/runner                        # runner 폴더 마운트
