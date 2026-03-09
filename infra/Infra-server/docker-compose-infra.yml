@@ -44,7 +44,7 @@ services:
 
   # 3. 백엔드 서버
   backend:
-    build: ./backend
+    image: ghcr.io/ldj5098/iot-security-architecture-configure/backend:latest
     container_name: ${TAG}-backend
     environment:
       MQTT_INT_PORT: ${MQTT_INT_PORT}

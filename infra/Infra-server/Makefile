@@ -1,4 +1,4 @@
-MAIN = docker-compose.yml
+MAIN = docker-compose-infra.yml
 SUB = docker-compose-sub.yml
 
 #전체 실행 (c-client + runner)
