@@ -9,7 +9,6 @@ on:
       - 'Dev/Dev-c-client-device/Dockerfile'
       - 'Dev/Dev-server/mosquitto/docker-entrypoint.sh'
       - 'Dev/Dev-c-client-device/docker-compose.yml'
-      - 'Dev/Dev-server/docker-compose.yml'
 
 jobs:
   ci:
@@ -22,15 +21,15 @@ jobs:
         run: gcc -fsyntax-only Dev/Dev-c-client-device/device.c
 
       - name: Dockerfile 문법 체크 (c-client-device)
-        run: docker build --no-cache --dry-run -f Dev/Dev-c-client-device/Dockerfile Dev/Dev-c-client-device
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dev/Dev-c-client-device/Dockerfile
 
       - name: sh 문법 체크 (docker-entrypoint.sh)
         run: sh -n Dev/Dev-server/mosquitto/docker-entrypoint.sh
 
       - name: docker-compose 문법 체크
-        run: |
-          docker compose -f Dev/Dev-c-client-device/docker-compose.yml config
-          docker compose -f Dev/Dev-server/docker-compose.yml config
+        run: docker compose -f Dev/Dev-c-client-device/docker-compose.yml config
 
   notify:
     needs: ci

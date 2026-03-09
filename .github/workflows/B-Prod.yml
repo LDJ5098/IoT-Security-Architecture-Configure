@@ -1,4 +1,4 @@
-name: B-Prod (Backend 배포 알림)
+name: B-Prod (Backend 배포)
 
 on:
   push:
@@ -18,7 +18,9 @@ jobs:
         run: sh -n Dev/Dev-server/backend/docker-entrypoint.sh
 
       - name: Dockerfile 문법 체크
-        run: docker build --no-cache --dry-run -f Dev/Dev-server/backend/Dockerfile Dev/Dev-server/backend
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dev/Dev-server/backend/Dockerfile
 
   build:
     needs: ci
