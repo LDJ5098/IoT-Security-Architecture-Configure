@@ -12,24 +12,38 @@ const IMAGE_BASE = `ghcr.io/${GITHUB_REPO}/backend`;
 
 // GitHub API로 run 검증
 const verifyRun = async (runId: string): Promise<string> => {
-  const res = await axios.get(
-    `https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${runId}`,
-    { headers: { Authorization: `Bearer ${GITHUB_TOKEN}` } }
-  );
+  const timeout = 3 * 60 * 1000; // 3분
+  const start = Date.now();
 
-  const { status, conclusion, head_branch, head_sha } = res.data;
+  while (true) {
+    if (Date.now() - start > timeout) {
+      throw new Error('빌드 타임아웃 (3분 초과)');
+    }
 
-  // 1. CI 성공 여부
-  if (status !== 'completed' || conclusion !== 'success') {
-    throw new Error(`CI 미통과 (status: ${status}, conclusion: ${conclusion})`);
+    const res = await axios.get(
+      `https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${runId}`,
+      { headers: { Authorization: `Bearer ${GITHUB_TOKEN}` } }
+    );
+
+    const { status, conclusion, head_branch, head_sha } = res.data;
+
+    //이미지 빌드 진행중
+    if (status !== 'completed') {
+      console.log(`>> 빌드 진행중... (status: ${status}) 3초 후 재확인`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      continue;
+    }
+
+    if (conclusion !== 'success') {
+      throw new Error(`CI 미통과 (conclusion: ${conclusion})`);
+    }
+
+    if (head_branch !== DEPLOY_BRANCH) {
+      throw new Error(`잘못된 브랜치 (head_branch: ${head_branch})`);
+    }
+
+    return head_sha.slice(0, 7);
   }
-
-  // 2. 브랜치 검증
-  if (head_branch !== DEPLOY_BRANCH) {
-    throw new Error(`잘못된 브랜치 (head_branch: ${head_branch})`);
-  }
-
-  return head_sha.slice(0, 7); // image tag용 short sha 반환
 };
 
 // 로컬 이미지 삭제
