@@ -17,9 +17,9 @@ echo ">> 배포 이미지: ${IMAGE}:${IMAGE_TAG}"
 echo ">> 로컬 파일 시스템 최신화 중..."
 docker run --rm -v /infra-server/backend:/target ${IMAGE}:${IMAGE_TAG} cp -rf /app/. /target/
 
-# 2. 기존의 pull 및 up 과정 유지
+# 2. pull 및 up 과정
 echo ">> docker-compose 이미지 태그 적용..."
 IMAGE_TAG="${IMAGE_TAG}" docker compose -f "${COMPOSE_FILE}" -f "${COMPOSE_FILE_SUB}" pull backend && \
-docker compose -f "${COMPOSE_FILE}" -f "${COMPOSE_FILE_SUB}" up -d --no-build --no-recreate backend
+docker compose -f "${COMPOSE_FILE}" -f "${COMPOSE_FILE_SUB}" up -d --no-build --no-deps backend
 
 echo ">> 배포 완료"
