@@ -84,13 +84,10 @@ app.post('/deploy', async (req, res) => {
 
       // 이미지 미리 pull
       console.log('>> 이미지 pull 중...');
-      const auth = Buffer.from(`${USER_ID}:${GITHUB_TOKEN}`).toString('base64');
-      const configJson = JSON.stringify({ auths: { 'ghcr.io': { auth } } });
-      
       await runCommand(
         `mkdir -p /root/.docker && ` +
-        `echo '${configJson}' > /root/.docker/config.json && ` + // 인증 파일 직접 생성
-        `DOCKER_CONTEXT=default docker pull ${IMAGE_BASE}:sha-${imageTag}` // 컨텍스트 고정
+        `echo '{"auths":{"ghcr.io":{"auth":"${Buffer.from(`ldj5098:${GITHUB_TOKEN}`).toString('base64')}"}}}' > /root/.docker/config.json && ` +
+        `docker pull ${IMAGE_BASE}:sha-${imageTag}`
       );
       console.log('>> 이미지 pull 완료');
 
