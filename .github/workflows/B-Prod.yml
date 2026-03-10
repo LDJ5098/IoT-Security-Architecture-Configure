@@ -70,7 +70,7 @@ jobs:
               "embeds": [{
                 "title": "[Backend] ${{ github.event.head_commit.message }}",
                 "url": "${{ github.event.head_commit.url }}",
-                "description": "**푸시한 사람:** ${{ github.actor }}\n**Run ID:** ${{ github.run_id }}",
+                "description": "**Push User :** ${{ github.actor }}\n**Run ID:** ${{ github.run_id }}",
                 "color": 39423
               }],
               "components": [{

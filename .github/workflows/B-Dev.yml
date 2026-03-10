@@ -45,7 +45,7 @@ jobs:
               "embeds": [{
                 "title": "[Dev] ${{ github.event.head_commit.message }}",
                 "url": "${{ github.event.head_commit.url }}",
-                "description": "**푸시한 사람:** ${{ github.actor }}",
+                "description": "**Push User :** ${{ github.actor }}",
                 "color": 16776960
               }],
               "components": [{
