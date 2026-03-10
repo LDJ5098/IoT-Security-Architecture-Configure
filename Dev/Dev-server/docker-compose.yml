@@ -46,6 +46,9 @@ services:
   backend:
     build: ./backend
     container_name: ${TAG}-backend
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
     environment:
       MQTT_INT_PORT: ${MQTT_INT_PORT}
       DATABASE_URL: ${DATABASE_URL}
