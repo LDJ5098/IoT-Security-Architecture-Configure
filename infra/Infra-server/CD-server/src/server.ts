@@ -12,7 +12,7 @@ const IMAGE_BASE = `ghcr.io/${GITHUB_REPO.toLowerCase()}/backend`;
 
 // GitHub API로 run 검증
 const verifyRun = async (runId: string): Promise<string> => {
-  const timeout = 3 * 60 * 1000; // 3분
+  const timeout = 10 * 60 * 1000; // 10분
   const start = Date.now();
 
   while (true) {
