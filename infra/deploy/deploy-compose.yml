@@ -1,0 +1,34 @@
+services:
+  # 1. CD Server
+  cd-server:
+    build: ./CD-server
+    container_name: cd-server
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_REPO=${GITHUB_REPO}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock         # Docker 제어용
+      - ../Infra-server:/Infra-server                     # Infra-server 접근
+      - ../Infra-c-client-device:/Infra-c-client-device   # Infra-c-client-device 접근
+      - ./CD-server:/app
+    networks:
+      - service-net   # 서비스 서버 배포용
+      - mgmt-net     # Discord Bot과 통신
+
+  # 2. Discord Bot
+  discord-bot:
+    build: ./discord-bot
+    container_name: discord-bot
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - CHANNEL_ID=${CHANNEL_ID}
+      - CD_SERVER_URL=http://cd-server:3000
+    networks:
+      - mgmt-net
+
+networks:
+  mgmt-net:
+    driver: bridge
+  service-net:
+    external: true
+    name: infra-server_service-net

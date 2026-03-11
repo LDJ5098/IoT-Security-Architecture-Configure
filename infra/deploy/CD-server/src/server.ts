@@ -87,7 +87,6 @@ app.post('/deploy', async (req, res) => {
       const auth = Buffer.from(`ldj5098:${GITHUB_TOKEN}`).toString('base64');
       const configJson = JSON.stringify({ auths: { 'ghcr.io': { auth } } });
       
-      // 인증 파일 생성 (질문자님 기존 방식 유지)
       await runCommand(
         `mkdir -p /root/.docker && ` +
         `echo '${configJson}' > /root/.docker/config.json`
@@ -96,11 +95,12 @@ app.post('/deploy', async (req, res) => {
       console.log('>> 이미지 pull 완료');
 
       // 배포 실행
-      console.log('>> 배포 실행 중...');
-      await runCommand(`sh /app/src/scripts/deploy.sh sha-${imageTag}`);
+      console.log('>> backend 이미지 배포 실행 중...');
+      await runCommand(`sh /app/src/scripts/deploy-Backend.sh sha-${imageTag}`);
 
     } else if (type === 'dev') {
-      await runCommand('sh /app/src/scripts/deploy.sh');
+      console.log('>> Dev 빠른 배포 실행 중...');
+      await runCommand('sh /app/src/scripts/deploy-Dev.sh');
     }
 
     console.log('>> 배포 완료');

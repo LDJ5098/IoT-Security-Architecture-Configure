@@ -1,0 +1,28 @@
+services:
+  # 1. SSH (Bastion Host)
+  ssh:
+    image: lscr.io/linuxserver/openssh-server:latest
+    container_name: ssh
+    environment:
+      - USER_NAME=${SSH_USER}
+      - PUBLIC_KEY_FILE=/pubkey/1-LEVEL-KEY.pub
+      - SUDO_ACCESS=false
+    ports:
+      - "${SSH_EXT_PORT}:2222"
+    volumes:
+      - ./ssh-key/1-LEVEL-KEY.pub:/pubkey/1-LEVEL-KEY.pub:ro
+      - ././mosquitto/docker-entrypoint.sh:/mosquitto/docker-entrypoint.sh:ro
+      - ././mosquitto/log:/mosquitto/log:ro
+      - ././backend:/backend:ro
+      - /var/run/docker.sock:/var/run/docker.sock  # 컨테이너 제어용
+    networks:
+      - service-net   # 서비스 서버 접근
+      - mgmt-net     # 인프라 서버 접근
+
+networks:
+  mgmt-net:
+    external: true
+    name: deploy_mgmt-net
+  service-net:
+    external: true
+    name: infra-server_service-net

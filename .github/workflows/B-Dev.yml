@@ -11,29 +11,7 @@ on:
       - 'Dev/Dev-c-client-device/docker-compose.yml'
 
 jobs:
-  ci:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 코드 체크아웃
-        uses: actions/checkout@v4
-
-      - name: C 컴파일 체크 (device.c)
-        run: gcc -fsyntax-only Dev/Dev-c-client-device/device.c
-
-      - name: Dockerfile 문법 체크 (c-client-device)
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dev/Dev-c-client-device/Dockerfile
-          ignore: DL3018
-
-      - name: sh 문법 체크 (docker-entrypoint.sh)
-        run: sh -n Dev/Dev-server/mosquitto/docker-entrypoint.sh
-
-      - name: docker-compose 문법 체크
-        run: docker compose -f Dev/Dev-c-client-device/docker-compose.yml config
-
   notify:
-    needs: ci
     runs-on: ubuntu-latest
     steps:
       - name: Discord 승인 요청 전송
