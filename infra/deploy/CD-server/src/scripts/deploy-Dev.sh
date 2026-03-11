@@ -10,21 +10,32 @@ if [ -z "$GITHUB_TOKEN" ] || [ -z "$GITHUB_REPO" ]; then
     exit 1
 fi
 
-echo ">> GitHub에서 최신 소스 코드 다운로드 시작..."
+BASE_API="https://api.github.com/repos/$GITHUB_REPO/contents"
 
-# 공통 curl 옵션 (인증 토큰 및 Raw 데이터 요청)
-CURL_OPTS="-H 'Authorization: token $GITHUB_TOKEN' -H 'Accept: application/vnd.github.v3.raw' -L"
+AUTH_HEADER="Authorization: token $GITHUB_TOKEN"
+ACCEPT_HEADER="Accept: application/vnd.github.v3.raw"
+
+echo ">> GitHub에서 최신 소스 코드 다운로드 시작..."
 
 # Device 관련 파일
 echo ">> Device 파일 다운로드 중..."
-eval "curl $CURL_OPTS https://api.github.com/repos/$GITHUB_REPO/contents/Dev/Dev-c-client-device/device.c?ref=main -o $DEVICE_DIR/device.c"
-eval "curl $CURL_OPTS https://api.github.com/repos/$GITHUB_REPO/contents/Dev/Dev-c-client-device/Dockerfile?ref=main -o $DEVICE_DIR/Dockerfile"
-eval "curl $CURL_OPTS https://api.github.com/repos/$GITHUB_REPO/contents/Dev/Dev-c-client-device/docker-compose.yml?ref=main -o $DEVICE_DIR/docker-compose.yml"
+curl -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" -L \
+     "$BASE_API/Dev/Dev-c-client-device/device.c?ref=main" \
+     -o "$DEVICE_DIR/device.c"
+
+curl -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" -L \
+     "$BASE_API/Dev/Dev-c-client-device/Dockerfile?ref=main" \
+     -o "$DEVICE_DIR/Dockerfile"
+
+curl -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" -L \
+     "$BASE_API/Dev/Dev-c-client-device/docker-compose.yml?ref=main" \
+     -o "$DEVICE_DIR/docker-compose.yml"
 
 # Server(Mosquitto) 관련 파일
 echo ">> Server 파일 다운로드 중..."
-eval "curl $CURL_OPTS https://api.github.com/repos/$GITHUB_REPO/contents/Dev/Dev-server/mosquitto/docker-entrypoint.sh?ref=main -o $SERVER_DIR/mosquitto/docker-entrypoint.sh"
-
+curl -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" -L \
+     "$BASE_API/Dev/Dev-server/mosquitto/docker-entrypoint.sh?ref=main" \
+     -o "$SERVER_DIR/mosquitto/docker-entrypoint.sh"
 
 echo ">> 다운로드 완료. 컨테이너 빌드 및 재시작..."
 # Device 서비스
