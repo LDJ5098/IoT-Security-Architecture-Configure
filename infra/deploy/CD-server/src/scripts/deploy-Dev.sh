@@ -1,35 +1,37 @@
 #!/bin/sh
 set -e
 
-# scripts -> src -> CD-server -> deploy -> infra(REPO_ROOT) : 총 4단계 위
+DEVICE_DIR="/Infra-c-client-device"
+SERVER_DIR="/Infra-server"
 
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(cd "$SCRIPT_DIR/../../../.." && pwd)
+# 필수 환경 변수 체크 (GITHUB_TOKEN, GITHUB_REPO가 필요함)
+if [ -z "$GITHUB_TOKEN" ] || [ -z "$GITHUB_REPO" ]; then
+    echo ">> Error : GITHUB_TOKEN 또는 GITHUB_REPO 환경 변수가 없습니다."
+    exit 1
+fi
 
-DEVICE_DIR="$REPO_ROOT/Infra-c-client-device"
-SERVER_DIR="$REPO_ROOT/Infra-server"
+echo ">> GitHub에서 최신 소스 코드 다운로드 시작..."
 
-git fetch origin main
+# 공통 curl 옵션 (인증 토큰 및 Raw 데이터 요청)
+CURL_OPTS="-H 'Authorization: token $GITHUB_TOKEN' -H 'Accept: application/vnd.github.v3.raw' -L"
 
-echo ">> GitHub:Dev/ -> Server:infra/ 동기화 시작"
+# Device 관련 파일
+echo ">> Device 파일 다운로드 중..."
+eval "curl $CURL_OPTS https://api.github.com/repos/$GITHUB_REPO/contents/Dev/Dev-c-client-device/device.c?ref=main -o $DEVICE_DIR/device.c"
+eval "curl $CURL_OPTS https://api.github.com/repos/$GITHUB_REPO/contents/Dev/Dev-c-client-device/Dockerfile?ref=main -o $DEVICE_DIR/Dockerfile"
+eval "curl $CURL_OPTS https://api.github.com/repos/$GITHUB_REPO/contents/Dev/Dev-c-client-device/docker-compose.yml?ref=main -o $DEVICE_DIR/docker-compose.yml"
 
-# 1. Device 관련 (Infra-c-client-device)
-git show origin/main:Dev/Dev-c-client-device/device.c > "$DEVICE_DIR/device.c"
-git show origin/main:Dev/Dev-c-client-device/Dockerfile > "$DEVICE_DIR/Dockerfile"
-git show origin/main:Dev/Dev-c-client-device/docker-compose.yml > "$DEVICE_DIR/docker-compose.yml"
+# Server(Mosquitto) 관련 파일
+echo ">> Server 파일 다운로드 중..."
+eval "curl $CURL_OPTS https://api.github.com/repos/$GITHUB_REPO/contents/Dev/Dev-server/mosquitto/docker-entrypoint.sh?ref=main -o $SERVER_DIR/mosquitto/docker-entrypoint.sh"
 
-# 2. Server 관련 (Infra-server)
-git show origin/main:Dev/Dev-server/mosquitto/docker-entrypoint.sh > "$SERVER_DIR/mosquitto/docker-entrypoint.sh"
 
-# 1. Device 서비스 (Dockerfile 빌드 후 재시작)
-echo ">> Infra-c-client-device 적용 중..."
+echo ">> 다운로드 완료. 컨테이너 빌드 및 재시작..."
+# Device 서비스
 cd "$DEVICE_DIR"
-docker-compose up -d --build
-
-# 2. Server 서비스 (mosquitto만 타겟팅 재시작)
-echo ">> Mosquitto 적용 중..."
+docker compose up -d --build
+# Mosquitto 서비스
 cd "$SERVER_DIR"
-# infra-compose.yml 파일을 사용하며, mosquitto 서비스만 새로 올립니다.
-docker-compose -f infra-compose.yml up -d --no-deps mosquitto
+docker compose -f infra-compose.yml up -d --no-deps mosquitto
 
-echo ">> 동기화 완료"
+echo ">> [성공] Dev 배포가 완료되었습니다."
