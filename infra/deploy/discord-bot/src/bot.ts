@@ -54,12 +54,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } else if (customId === 'approve_dev') {
     await interaction.update({ content: '✅ Dev 배포 승인됨. 검증 중...', components: [] });
     try {
-      await axios.post(`${CD_DEV_SERVER_URL}/deploy`, { run_id: runId, type: 'dev' });
+      await axios.post(`${CD_SERVER_URL}/deploy`, { run_id: runId, type: 'dev' }); 
       await interaction.editReply({ content: '✅ Dev 배포 완료' });
     } catch (err: any) {
-      await interaction.editReply({ content: `❌ Dev 배포 실패: ${err.response?.data?.error || err.message}` });
+      await interaction.editReply({ content: `❌ Dev 배포 실패: ${err.message}` }); 
     }
-
   } else if (customId === 'reject_dev') {
     await interaction.update({ content: '❌ Dev 배포 거부됨.', components: [] });
   }
