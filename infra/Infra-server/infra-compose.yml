@@ -1,16 +1,14 @@
 services:
   # 1. MQTT 브로커
   mqtt:
-    image: eclipse-mosquitto:latest
+    build: ./mosquitto
     container_name: ${TAG}-mqtt-broker
     ports:
       # - "${MQTT_EXT_PORT}:${MQTT_INT_PORT}"        # 평문 포트 (테스트 완료, 외부 접근 차단)
       - "${MQTT_TLS_EXT_PORT}:${MQTT_TLS_INT_PORT}"  # TLS 포트
     volumes:
-      - ./mosquitto/docker-entrypoint.sh:/docker-entrypoint.sh:ro
       - ./mosquitto/log:/mosquitto/log
       - ./mosquitto/certs:/mosquitto/certs:ro          # 인증서 마운트 추가
-    command: sh /docker-entrypoint.sh
     environment:
       MQTT_INT_PORT: ${MQTT_INT_PORT}                # 평문 포트 (테스트 완료)
       MQTT_TLS_INT_PORT: ${MQTT_TLS_INT_PORT}         # TLS 포트

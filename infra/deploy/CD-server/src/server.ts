@@ -57,8 +57,13 @@ const removeLocalImage = (tag: string): Promise<void> => {
 const runCommand = (cmd: string): Promise<string> => {
   return new Promise((resolve, reject) => {
     exec(cmd, (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr));
-      else resolve(stdout);
+      if (err) {
+        // stderr, stdout, 기본 메시지
+        const detailedError = stderr.trim() || stdout.trim() || err.message || "알 수 없는 쉘 에러 발생";
+        reject(new Error(detailedError)); 
+      } else {
+        resolve(stdout);
+      }
     });
   });
 };
