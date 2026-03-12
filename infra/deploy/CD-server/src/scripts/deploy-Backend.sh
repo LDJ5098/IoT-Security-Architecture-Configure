@@ -3,8 +3,8 @@ set -e
 
 IMAGE="ghcr.io/$GITHUB_REPO/backend"
 IMAGE_TAG="${1:-latest}"
-COMPOSE_FILE="/mnt/d/작업/프로그램 개발/IoT-Security-Architecture-Configure/infra/Infra-server/infra-compose.yml"
-BACKEND_DIR="/mnt/d/작업/프로그램 개발/IoT-Security-Architecture-Configure/infra/Infra-server/backend"
+COMPOSE_FILE="/CD-Infra-server/infra-compose.yml"
+BACKEND_DIR="/CD-Infra-server/backend/"
 
 echo ">> 배포 시작 (Tag: ${IMAGE_TAG})"
 docker pull ${IMAGE}:${IMAGE_TAG}

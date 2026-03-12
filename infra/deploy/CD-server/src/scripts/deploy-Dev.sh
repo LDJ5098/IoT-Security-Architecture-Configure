@@ -7,8 +7,8 @@ REPO="${GITHUB_REPO}"
 BRANCH="main"
 
 # deploy-compose.yml에 정의된 볼륨 마운트 경로
-INFRA_SERVER_DIR="/Infra-server"
-INFRA_CLIENT_DIR="/Infra-c-client-device"
+INFRA_SERVER_DIR="/mnt/d/작업/프로그램 개발/IoT-Security-Architecture-Configure/infra/Infra-server"
+INFRA_CLIENT_DIR="/mnt/d/작업/프로그램 개발/IoT-Security-Architecture-Configure/infra/Infra-c-client-device"
 
 echo ">> [Dev 배포] 인수 없이 내부 설정에 따라 파일 동기화 시작"
 
