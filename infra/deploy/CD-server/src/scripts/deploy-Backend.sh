@@ -22,6 +22,5 @@ docker rm -f Infra-backend 2>/dev/null || true
 
 export BACKEND_IMAGE_TAG="${IMAGE_TAG}"
 
-docker compose -f "${COMPOSE_FILE}" up -d --force-recreate --no-deps backend
-
-echo ">> 배포 완료"
+#배포
+docker compose -f "${COMPOSE_FILE}" up -d --no-deps backend
