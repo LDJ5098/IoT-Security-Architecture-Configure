@@ -7,9 +7,11 @@ RUN apt-get update && apt-get install -y git curl && \
 
 WORKDIR /app
 
+# 패키지 설치
 COPY package.json .
 RUN npm install
 
+# 소스코드 복사 및 빌드
 COPY tsconfig.json .
 COPY src/ ./src/
 RUN npm run build
