@@ -15,10 +15,12 @@ services:
       - ../Infra-server/mosquitto/docker-entrypoint.sh:/mosquitto/docker-entrypoint.sh
       - ../Infra-server/mosquitto/Dockerfile:/mosquitto/Dockerfile
       - ../Infra-server/backend:/backend
+      - ../deploy:/deploy
       - /var/run/docker.sock:/var/run/docker.sock  # 컨테이너 제어용
+      - ./deploy-setting:/deploy-setting #배포 설정 파일
     networks:
-      - service-net   # 서비스 서버 접근
-      - mgmt-net     # 인프라 서버 접근
+      - service-net   # 메인 서버 접근
+      - mgmt-net     # 배포 서버 접근
 
 networks:
   mgmt-net:
