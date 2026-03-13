@@ -12,7 +12,6 @@ app.use(express.json());
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN!;
 const CD_SERVER_URL = process.env.CD_SERVER_URL!;
-const CD_DEV_SERVER_URL = process.env.CD_DEV_SERVER_URL!;
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]

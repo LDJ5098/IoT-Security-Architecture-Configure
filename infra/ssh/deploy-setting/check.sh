@@ -7,7 +7,7 @@ check(){
     W_TIM=$(grep "WAIT_TIME" $STATUS_FILE | cut -d: -f2 | tr -d " " | tr -d "\r")
     
     echo "------------------------------------------"
-    echo ">> [배포 상태 확인] (check로 가능)"
+    echo ">> [배포 설정 확인] (check로 가능)"
     echo ">> 파일 위치 : /deploy-setting/deploy_status.txt"
     echo "접속 상태 : $S_ACC"
     echo "(${W_TIM}초) 타임락 : $T_LCK"
