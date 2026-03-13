@@ -7,8 +7,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - .:/app
+      - /d/작업/프로그램 개발/IoT-Security-Architecture-Configure/infra/Infra-c-client-device:/app
     tty: true 
     stdin_open: true
 
-#CI/CD Dev test 26.03.12 1809
+# CI/CD test
