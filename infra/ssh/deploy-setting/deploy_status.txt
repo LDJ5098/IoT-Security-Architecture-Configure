@@ -1,4 +1,4 @@
-SSH_ACCESS: false
+SSH_ACCESS: true
 TIME_LOCK: true
 WAIT_TIME: 60
 

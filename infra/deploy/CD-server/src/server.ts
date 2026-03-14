@@ -34,27 +34,29 @@ let settings = readSettings();
 
 // ─── QUEUE 파일 동기화 ────────────────────────────────────────────────────
 
-// 서버가 직접 파일을 쓸 때 watchFile 재진입 방지
 let isWritingFile = false;
 
-/** 파일의 QUEUE(Backend, Dev) 섹션에서 jobId Set 추출 */
-const readQueueJobIds = (type: 'backend' | 'dev'): Set<string> => {
+/** 파일의 QUEUE_Backend / QUEUE_Dev 섹션에서 순번 Set 추출 */
+const readQueueIndices = (type: 'backend' | 'dev'): Set<number> => {
   const txt = readFileSync(STATUS_FILE, 'utf-8');
   const key = type === 'backend' ? 'QUEUE_Backend' : 'QUEUE_Dev';
-  const section = txt.match(new RegExp(`^${key}=\\n([\\s\\S]*?)(?=\\n[A-Z]|$)`, 'm'))?.[1] ?? '';
+  const section = txt.match(new RegExp(`${key}=[\\s\\S]*?(?=\\n[A-Z]|$)`))?.[0] ?? '';
   return new Set(
-    section.split('\n').filter(l => l.startsWith('- ')).map(l => l.slice(2).trim().split(':')[0])
+    section.split('\n')
+      .filter(l => l.startsWith('- '))
+      .map(l => parseInt(l.slice(2).trim().split(':')[0]))
+      .filter(n => !isNaN(n))
   );
 };
 
-/** waiting 상태 job 목록을 파일의 QUEUE(Backend, Dev) 섹션에 기록 */
-const writeQueueToFile = (type: 'backend' | 'dev', waitingJobs: DeployJob[]) => {
+/** deploying 제외한 job 목록을 파일의 QUEUE_Backend / QUEUE_Dev 섹션에 기록 */
+const writeQueueToFile = (type: 'backend' | 'dev', jobs: DeployJob[]) => {
   isWritingFile = true;
   try {
     const txt = readFileSync(STATUS_FILE, 'utf-8');
     const key = type === 'backend' ? 'QUEUE_Backend' : 'QUEUE_Dev';
-    const lines = waitingJobs
-      .map(j => `- ${j.jobId}:${j.type}:${j.runId ?? ''}`)
+    const lines = jobs
+      .map((j, idx) => `- ${idx + 1}:${j.type}:${j.runId ?? ''}:${j.status}`)
       .join('\n');
 
     const newTxt = txt.includes(`${key}=`)
@@ -65,10 +67,6 @@ const writeQueueToFile = (type: 'backend' | 'dev', waitingJobs: DeployJob[]) => 
     setTimeout(() => { isWritingFile = false; }, 200);
   }
 };
-
-// 서버 재시작 시 Discord interaction token이 만료되어 복원 불가 → 큐 초기화
-writeQueueToFile('backend', []);
-writeQueueToFile('dev', []);
 
 // ─── 타입 ────────────────────────────────────────────────────────────────
 
@@ -97,11 +95,8 @@ const sendCallback = (url: string, jobId: string, event: string, data: object = 
 
 class DeployQueue {
   private jobs: DeployJob[] = [];
-  private type: 'backend' | 'dev'
 
-  constructor(type: 'backend' | 'dev') {
-    this.type = type;
-  }
+  constructor(private type: 'backend' | 'dev') {}
 
   private get active() { return this.jobs[0] as DeployJob | undefined; }
 
@@ -109,7 +104,7 @@ class DeployQueue {
   add(job: DeployJob): number {
     this.jobs.push(job);
     const pos = this.jobs.length - 1;
-    this.syncFileFromQueue(); // 파일에 waiting job 기록
+    this.syncFileFromQueue();
     if (pos === 0) setImmediate(() => this.processNext());
     return pos;
   }
@@ -123,7 +118,7 @@ class DeployQueue {
     if (job.timer) clearTimeout(job.timer);
     this.jobs.splice(idx, 1);
 
-    this.syncFileFromQueue(); // 파일 갱신
+    this.syncFileFromQueue();
     sendCallback(job.callbackUrl, job.jobId, 'job_deleted');
 
     if (idx === 0 && this.jobs.length > 0) {
@@ -137,16 +132,16 @@ class DeployQueue {
 
   /**
    * watchFile 감지 시 호출.
-   * 파일에서 사라진 waiting job을 큐에서 제거.
+   * 파일에서 사라진 순번의 job을 큐에서 제거.
    */
-  syncFromFile(fileJobIds: Set<string>) {
-    const toRemove = this.jobs.filter(
-      j => j.status === 'waiting' && !fileJobIds.has(j.jobId)
-    );
+  syncFromFile(fileIndices: Set<number>) {
+    const nonDeployingJobs = this.jobs.filter(j => j.status !== 'deploying');
+    const toRemove = nonDeployingJobs.filter((_, idx) => !fileIndices.has(idx + 1));
 
     for (const job of toRemove) {
       const idx = this.jobs.indexOf(job);
       if (idx === -1) continue;
+      if (job.timer) clearTimeout(job.timer);
       this.jobs.splice(idx, 1);
       sendCallback(job.callbackUrl, job.jobId, 'job_deleted');
       console.log(`>> 파일 동기화로 job 삭제 (jobId: ${job.jobId})`);
@@ -163,34 +158,41 @@ class DeployQueue {
     const job = this.active;
     if (!job) return;
 
+    // SSH_ACCESS false → true : 타이머락 일시정지
     if (!prev.sshAccess && next.sshAccess && job.status === 'timerlock_running') {
       this.pauseTimerlock(job);
     }
+
+    // SSH_ACCESS true → false : 재개 또는 시작
     if (prev.sshAccess && !next.sshAccess) {
       if (job.status === 'timerlock_paused') this.resumeTimerlock(job);
       else if (job.status === 'waiting')     this.processNext();
     }
 
+    // TIME_LOCK true → false : 타이머락 해제
     if (prev.timeLock && !next.timeLock) {
       if (job.status === 'timerlock_running') {
         clearTimeout(job.timer);
         job.timer = undefined;
         this.startDeploying(job);
       } else if (job.status === 'timerlock_paused') {
+        // SSH_ACCESS가 true라 배포는 못 하고 대기 상태로 복귀
         job.status = 'waiting';
         this.syncFileFromQueue();
       }
     }
 
+    // TIME_LOCK false → true : 대기 중인 job에 타이머락 적용
     if (!prev.timeLock && next.timeLock) {
       if (job.status === 'waiting' && !next.sshAccess) {
         this.startTimerlock(job);
       }
     }
 
+    // WAIT_TIME 변경
     if (prev.waitTime !== next.waitTime) {
       if (job.status === 'timerlock_running') {
-        job.elapsed += (Date.now() - job.timerStart!) / 1000;
+        job.elapsed   += (Date.now() - job.timerStart!) / 1000;
         job.timerStart = Date.now();
         clearTimeout(job.timer);
         const remaining = Math.max(0, next.waitTime - job.elapsed);
@@ -198,6 +200,8 @@ class DeployQueue {
         if (remaining <= 0) this.startDeploying(job);
         else job.timer = setTimeout(() => this.startDeploying(job), remaining * 1000);
       }
+      // timerlock_paused는 SSH_ACCESS가 true인 상태이므로 콜백 전송 안 함
+      // resumeTimerlock 호출 시 새 waitTime 기준으로 자동 계산
     }
   }
 
@@ -215,7 +219,7 @@ class DeployQueue {
     const remaining = Math.max(0, settings.waitTime - job.elapsed);
     job.status     = 'timerlock_running';
     job.timerStart = Date.now();
-    this.syncFileFromQueue(); // timerlock 진입 → 파일에서 제거
+    this.syncFileFromQueue();
     sendCallback(job.callbackUrl, job.jobId, 'timerlock_start', { seconds: Math.ceil(remaining) });
     if (remaining <= 0) { this.startDeploying(job); return; }
     job.timer = setTimeout(() => this.startDeploying(job), remaining * 1000);
@@ -226,12 +230,14 @@ class DeployQueue {
     job.elapsed += (Date.now() - job.timerStart!) / 1000;
     job.status   = 'timerlock_paused';
     sendCallback(job.callbackUrl, job.jobId, 'paused');
+    this.syncFileFromQueue();
   }
 
   private resumeTimerlock(job: DeployJob) {
     const remaining = Math.max(0, settings.waitTime - job.elapsed);
     job.status     = 'timerlock_running';
     job.timerStart = Date.now();
+    this.syncFileFromQueue();
     sendCallback(job.callbackUrl, job.jobId, 'timerlock_resume', { seconds: Math.ceil(remaining) });
     if (remaining <= 0) { this.startDeploying(job); return; }
     job.timer = setTimeout(() => this.startDeploying(job), remaining * 1000);
@@ -281,27 +287,33 @@ class DeployQueue {
     });
   }
 
-  /** waiting 상태 job만 파일에 기록 */
+  /** deploying 제외한 job만 파일에 기록 */
   private syncFileFromQueue() {
-    const waitingJobs = this.jobs.filter(j => j.status === 'waiting');
-    writeQueueToFile(this.type, waitingJobs);
+    const jobs = this.jobs.filter(j => j.status !== 'deploying');
+    writeQueueToFile(this.type, jobs);
   }
 }
 
 const backendQueue = new DeployQueue('backend');
 const devQueue     = new DeployQueue('dev');
 
+// Discord interaction token이 만료되어 복원 불가하므로 서버 재시작 시 큐 초기화
+writeQueueToFile('backend', []);
+writeQueueToFile('dev', []);
+
 // ─── 설정 파일 감시 ──────────────────────────────────────────────────────
 
 watchFile(STATUS_FILE, { interval: 1000 }, () => {
   if (isWritingFile) return;
+
   try {
     const prev = settings;
     const next = readSettings();
     settings = next;
+    console.log('>> 설정 변경 감지:', next);
 
-    backendQueue.syncFromFile(readQueueJobIds('backend'));
-    devQueue.syncFromFile(readQueueJobIds('dev'));
+    backendQueue.syncFromFile(readQueueIndices('backend'));
+    devQueue.syncFromFile(readQueueIndices('dev'));
 
     backendQueue.onSettingsChanged(prev, next);
     devQueue.onSettingsChanged(prev, next);
@@ -309,6 +321,7 @@ watchFile(STATUS_FILE, { interval: 1000 }, () => {
     console.error('설정 파일 읽기 실패:', err.message);
   }
 });
+
 // ─── API 배포 검증 ───────────────────────────────────────────────────────
 
 const verifyRun = async (runId: string): Promise<string> => {
