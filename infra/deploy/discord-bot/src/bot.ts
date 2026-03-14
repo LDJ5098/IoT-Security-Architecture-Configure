@@ -24,7 +24,9 @@ const BOT_CALLBACK_URL = process.env.BOT_CALLBACK_URL!;
 const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
 
 // 수락된 job의 interaction token 보관
-const pendingTokens = new Map<string, string>();
+const pendingTokens   = new Map<string, string>();
+// timerlock 카운트다운 타이머 보관
+const timelockTimers  = new Map<string, NodeJS.Timeout>();
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────
 
@@ -34,7 +36,6 @@ const updateInteraction = async (token: string, content: string, components: any
   });
 };
 
-// 거절 시 재시도/취소 버튼 (customId에 type, runId 인코딩)
 const retryRow = (type: string, runId: string | null) =>
   new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -52,6 +53,39 @@ const parseRunId = (desc: string | null): string | null => {
   return desc.match(/\*\*Run ID:\*\* (\d+)/)?.[1] ?? null;
 };
 
+// ─── 카운트다운 ───────────────────────────────────────────────────────────
+
+const clearTimelockTimer = (jobId: string) => {
+  const existing = timelockTimers.get(jobId);
+  if (existing) {
+    clearInterval(existing);
+    timelockTimers.delete(jobId);
+  }
+};
+
+const startCountdown = async (jobId: string, token: string, seconds: number, prefix: string) => {
+  clearTimelockTimer(jobId);
+
+  let remaining = seconds;
+  await updateInteraction(token, `⏱️ ${prefix}${remaining}초 후 배포가 시작됩니다.`);
+
+  const interval = setInterval(async () => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearTimelockTimer(jobId);
+      return;
+    }
+    try {
+      await updateInteraction(token, `⏱️ ${prefix}${remaining}초 후 배포가 시작됩니다.`);
+    } catch (err) {
+      console.error(`카운트다운 업데이트 실패 (job_id: ${jobId}):`, err);
+      clearTimelockTimer(jobId);
+    }
+  }, 1000);
+
+  timelockTimers.set(jobId, interval);
+};
+
 // ─── 배포 요청 ───────────────────────────────────────────────────────────
 
 const handleDeploy = async (
@@ -62,7 +96,6 @@ const handleDeploy = async (
   const jobId = randomUUID();
   const token = interaction.token as string;
 
-  // 3초 이내 응답 (Discord 요구사항)
   await interaction.update({ content: '🔄 배포 서버에 연결 중...', components: [] });
 
   try {
@@ -74,18 +107,14 @@ const handleDeploy = async (
     });
 
     if (data.status === 'blocked') {
-      // 거절 — bot은 더 이상 이 job 추적하지 않음, 재시도 버튼 표시
       await updateInteraction(token, '🚫 관리자가 점검중입니다.', [retryRow(type, runId)]);
-
     } else {
-      // 수락 — 이후 상태는 콜백으로만 수신
       pendingTokens.set(jobId, token);
       const msg = data.position === 0
         ? '🔄 배포를 준비 중입니다...'
         : `⏳ 배포 대기열에 진입했습니다. (대기: ${data.position})`;
       await updateInteraction(token, msg);
     }
-
   } catch (err: any) {
     await updateInteraction(token, `❌ 배포 서버 연결 실패: ${err.message}`);
   }
@@ -108,21 +137,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (customId === 'approve_backend') {
     await handleDeploy(interaction, 'backend', parseRunId(desc));
-
   } else if (customId === 'approve_dev') {
     await handleDeploy(interaction, 'dev', parseRunId(desc));
-
   } else if (customId === 'reject_backend') {
     await interaction.update({ content: '❌ Backend 배포 거부됨.', components: [] });
-
   } else if (customId === 'reject_dev') {
     await interaction.update({ content: '❌ Dev 배포 거부됨.', components: [] });
-
   } else if (customId === 'cancel_deploy') {
     await interaction.update({ content: '❌ 배포가 취소되었습니다.', components: [] });
-
   } else if (customId.startsWith('retry_')) {
-    // retry_${type}_${runId|null}
     const [, type, rawRunId] = customId.split('_');
     const runId = rawRunId === 'null' ? null : rawRunId;
     await handleDeploy(interaction, type as 'backend' | 'dev', runId);
@@ -131,13 +154,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // ─── CD server 콜백 수신 ─────────────────────────────────────────────────
 
-// 이 이벤트들은 job의 생명주기를 종료시킴
 const TERMINAL_EVENTS = new Set(['deploy_complete', 'deploy_failed', 'job_deleted']);
 
 app.post('/callback', async (req, res) => {
   const { job_id, event, data } = req.body;
   console.log(`콜백 수신 (job_id: ${job_id}, event: ${event})`);
-  res.json({ ok: true }); // CD server가 블로킹되지 않도록 즉시 응답
+  res.json({ ok: true });
 
   const token = pendingTokens.get(job_id);
   if (!token) {
@@ -150,28 +172,41 @@ app.post('/callback', async (req, res) => {
       case 'queue_update':
         await updateInteraction(token, `⏳ 배포 대기열에 진입했습니다. (대기: ${data.position})`);
         break;
+
       case 'timerlock_start':
-        await updateInteraction(token, `⏱️ ${data.seconds}초 후 배포가 시작됩니다.`);
+        await startCountdown(job_id, token, data.seconds, '');
         break;
+
       case 'timerlock_update':
-        await updateInteraction(token, `⏱️ 배포 대기 시간이 수정되어 ${data.seconds}초 후 배포가 시작됩니다.`);
+        await startCountdown(job_id, token, data.seconds, '대기 시간이 수정되어, 다시 ');
         break;
+
       case 'timerlock_resume':
-        await updateInteraction(token, `▶️ 남은 ${data.seconds}초 후 배포가 진행됩니다.`);
+        await startCountdown(job_id, token, data.seconds, '남은 ');
         break;
+
       case 'paused':
-        await updateInteraction(token, '⏸️ [차단] 배포가 닫혀 일시정지 합니다.');
+        // 카운트다운 멈춤
+        clearTimelockTimer(job_id);
+        await updateInteraction(token, '⏸️ 배포가 일시정지 되었습니다.');
         break;
+
       case 'deploy_start':
+        // 혹시 남은 타이머 정리
+        clearTimelockTimer(job_id);
         await updateInteraction(token, `🚀 ${data.label} 배포를 시작합니다...`);
         break;
+
       case 'deploy_complete':
         await updateInteraction(token, `✅ ${data.label} 배포 완료`);
         break;
+
       case 'deploy_failed':
         await updateInteraction(token, `❌ ${data.label} 배포 실패: ${data.error}`);
         break;
+
       case 'job_deleted':
+        clearTimelockTimer(job_id);
         await updateInteraction(token, '🗑️ 관리자가 배포를 삭제했습니다.');
         break;
     }
@@ -180,6 +215,7 @@ app.post('/callback', async (req, res) => {
   }
 
   if (TERMINAL_EVENTS.has(event)) {
+    clearTimelockTimer(job_id); // 혹시 남은 타이머 정리
     pendingTokens.delete(job_id);
   }
 });
