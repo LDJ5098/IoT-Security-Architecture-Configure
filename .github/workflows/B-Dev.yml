@@ -9,7 +9,6 @@ on:
       - 'Dev/Dev-c-client-device/Dockerfile'
       - 'Dev/Dev-c-client-device/docker-compose.yml'
       - 'Dev/Dev-server/mosquitto/**'
-      - '!Dev/Dev-server/mosquitto/log/**'
 
 jobs:
   notify:

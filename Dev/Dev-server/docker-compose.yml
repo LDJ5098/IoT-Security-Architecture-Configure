@@ -8,7 +8,8 @@ services:
       - "${MQTT_TLS_EXT_PORT}:${MQTT_TLS_INT_PORT}"  # TLS 포트
     volumes:
       - ./mosquitto/log:/mosquitto/log
-      - ./mosquitto/certs:/mosquitto/certs:ro          # 인증서 마운트 추가
+      - ../${TAG}-PKI/server/certs:/mosquitto/certs:ro          # 인증서 마운트 추가
+      - ./mosquitto/acl.conf:/mosquitto/acl.conf:ro
     environment:
       MQTT_INT_PORT: ${MQTT_INT_PORT}                # 평문 포트 (테스트 완료)
       MQTT_TLS_INT_PORT: ${MQTT_TLS_INT_PORT}         # TLS 포트

@@ -32,13 +32,12 @@ sed -i "s|\.:/app|${HOST_INFRA_CLIENT_DIR}:/app|g" \
 
 
 echo ">> Mosquitto 관련..."
-# GitHub API로 mosquitto 디렉토리 전체 파일 목록 조회 (log/ 제외)
+# GitHub API로 mosquitto 디렉토리 전체 파일 목록 조회
 MOSQUITTO_PATHS=$(curl -s \
   -H "Authorization: token ${TOKEN}" \
   "https://api.github.com/repos/${REPO}/git/trees/${BRANCH}?recursive=1" \
   | grep '"path"' \
   | grep 'Dev/Dev-server/mosquitto/' \
-  | grep -v 'Dev/Dev-server/mosquitto/log/' \
   | sed 's/.*"path": *"//;s/".*//')
 
 for FULL_PATH in $MOSQUITTO_PATHS; do
