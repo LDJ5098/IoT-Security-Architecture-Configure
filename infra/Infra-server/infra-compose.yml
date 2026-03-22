@@ -53,6 +53,7 @@ services:
     environment:
       MQTT_INT_PORT: ${MQTT_INT_PORT}
       DATABASE_URL: ${DATABASE_URL}
+      MQTT_HOST: ${TAG}-mqtt-broker
     depends_on:
       mqtt:
         condition: service_started   # mqtt는 시작됐을 때
