@@ -5,12 +5,16 @@ check(){
     S_ACC=$(grep "SSH_ACCESS" $STATUS_FILE | cut -d: -f2 | tr -d " " | tr -d "\r")
     T_LCK=$(grep "TIME_LOCK" $STATUS_FILE | cut -d: -f2 | tr -d " " | tr -d "\r")
     W_TIM=$(grep "WAIT_TIME" $STATUS_FILE | cut -d: -f2 | tr -d " " | tr -d "\r")
-    
+    RB=$(grep "ROLLBACK_Backend" $STATUS_FILE | cut -d: -f2- | sed 's/^ *//' | tr -d "\r")
+
     echo "------------------------------------------"
     echo ">> [배포 설정 확인] (check로 가능)"
     echo ">> 파일 위치 : /deploy-setting/deploy_status.txt"
     echo "접속 상태 : $S_ACC"
     echo "(${W_TIM}초) 타임락 : $T_LCK"
+    echo "------------------------------------------"
+    echo ">> [롤백 상태 확인(polling)] (rollback_watch로 가능)"
+    echo "롤백 상태 : ${RB:-없음}"
     echo "------------------------------------------"
 
     # [시나리오 1] 배포가 차단되어 있는 경우
@@ -32,4 +36,25 @@ check(){
         echo ">> 상태: [알 수 없음] 파일을 확인해 주세요."
     fi
     echo "------------------------------------------"
+}
+
+rollback_watch(){
+    # polling으로 ROLLBACK_Backend 결과 감지 후 출력 (모니터링 전용)
+    echo ">> 롤백 결과 대기 중... (Ctrl+C로 종료)"
+
+    while true; do
+        ROLLBACK_VAL=$(grep "ROLLBACK_Backend" $STATUS_FILE | cut -d: -f2- | sed 's/^ *//' | tr -d "\r")
+
+        if echo "$ROLLBACK_VAL" | grep -q "\["; then
+            RUN_ID=$(echo "$ROLLBACK_VAL" | cut -d' ' -f1)
+            TIME=$(echo "$ROLLBACK_VAL" | grep -o '\[.*\]' | tr -d '[]' | cut -d/ -f1)
+            RESULT=$(echo "$ROLLBACK_VAL" | grep -o '\[.*\]' | tr -d '[]' | cut -d/ -f2-)
+            echo "------------------------------------------"
+            echo ">> [${TIME}][RunID:${RUN_ID} / ${RESULT}]"
+            echo "------------------------------------------"
+            break
+        fi
+
+        sleep 1
+    done
 }

@@ -18,7 +18,7 @@ interface DeploySettings {
   sshAccess:       boolean;
   timeLock:        boolean;
   waitTime:        number;
-  rollbackBackend: string; // A 관리자가 직접 입력한 롤백 SHA (비어있으면 롤백 없음)
+  rollbackBackend: string; // A 관리자가 허용한 롤백 RunID (비어있으면 롤백 없음)
 }
 
 const readSettings = (): DeploySettings => {
@@ -70,12 +70,86 @@ const writeQueueToFile = (type: 'backend' | 'dev', jobs: DeployJob[]) => {
   }
 };
 
-/** 롤백 완료 후 ROLLBACK_Backend 값 초기화 */
-const clearRollback = () => {
+// ─── Used RunID 관리 ──────────────────────────────────────────────────────
+
+/** USED_RunID_Backend 섹션에서 RunID → SHA Map 추출 */
+const readUsedRunIds = (): Map<string, string> => {
+  const txt = readFileSync(STATUS_FILE, 'utf-8');
+  const section = txt.match(/USED_RunID_Backend=[\s\S]*?(?=\n[A-Z]|$)/)?.[0] ?? '';
+  const map = new Map<string, string>();
+  section.split('\n')
+    .filter(l => l.startsWith('- '))
+    .forEach(l => {
+      const parts = l.slice(2).trim().split(':');
+      if (parts.length === 2) map.set(parts[0], parts[1]);
+    });
+  return map;
+};
+
+/** USED_RunID_Backend 섹션에 RunID → SHA Map 기록 */
+const writeUsedRunIds = (runIds: Map<string, string>) => {
   isWritingFile = true;
   try {
     const txt = readFileSync(STATUS_FILE, 'utf-8');
-    const newTxt = txt.replace(/ROLLBACK_Backend:\s*\S*/, 'ROLLBACK_Backend:');
+    const lines = Array.from(runIds.entries())
+      .map(([runId, sha]) => `- ${runId}:${sha}`)
+      .join('\n');
+    const newTxt = txt.includes('USED_RunID_Backend=')
+      ? txt.replace(/USED_RunID_Backend=[\s\S]*?(?=\n[A-Z]|$)/, `USED_RunID_Backend=\n${lines}`)
+      : txt + `\nUSED_RunID_Backend=\n${lines}`;
+    writeFileSync(STATUS_FILE, newTxt);
+  } finally {
+    setTimeout(() => { isWritingFile = false; }, 200);
+  }
+};
+
+/** GHCR 이미지 존재 여부 확인 */
+const checkImageExists = async (sha: string): Promise<boolean> => {
+  try {
+    await runCommand(`docker manifest inspect ${IMAGE_BASE}:sha-${sha}`);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * 새 승인 요청이 들어올 때마다 USED_RunID_Backend를 GHCR 이미지 존재 여부로 동기화.
+ * GHCR cleanup 정책으로 삭제된 이미지의 RunID는 목록에서 제거.
+ */
+const syncUsedRunIds = async (): Promise<Map<string, string>> => {
+  const runIds = readUsedRunIds();
+  const synced = new Map<string, string>();
+  for (const [runId, sha] of runIds) {
+    if (await checkImageExists(sha)) {
+      synced.set(runId, sha);
+    } else {
+      console.log(`>> Used_RunID 동기화: GHCR 이미지 없음, 제거 (runId: ${runId}, sha: ${sha})`);
+    }
+  }
+  if (synced.size !== runIds.size) writeUsedRunIds(synced);
+  return synced;
+};
+
+/** 배포 완료 후 RunID를 Used_RunID에 추가 */
+const addUsedRunId = (runId: string, sha: string) => {
+  const runIds = readUsedRunIds();
+  runIds.set(runId, sha);
+  writeUsedRunIds(runIds);
+  console.log(`>> Used_RunID 추가 (runId: ${runId}, sha: ${sha})`);
+};
+
+/**
+ * 롤백 완료/실패 결과를 ROLLBACK_Backend에 기록.
+ * check.sh가 polling으로 감지하여 SSH 화면에 결과 출력.
+ * '[' 문자로 완료/실패 여부를 구분하여 watchFile 재트리거 방지.
+ */
+const writeRollbackResult = (runId: string, result: string) => {
+  isWritingFile = true;
+  try {
+    const txt     = readFileSync(STATUS_FILE, 'utf-8');
+    const time    = new Date().toLocaleTimeString('ko-KR');
+    const newTxt  = txt.replace(/ROLLBACK_Backend:\s*\S*/, `ROLLBACK_Backend: ${runId} [${time}/${result}]`);
     writeFileSync(STATUS_FILE, newTxt);
   } finally {
     setTimeout(() => { isWritingFile = false; }, 200);
@@ -281,6 +355,9 @@ class DeployQueue {
         //배포 시간 측정
         const output = await runCommand(`sh /app/src/scripts/deploy-Backend.sh sha-${imageTag}`);
         console.log(output);
+
+        // 배포 성공 후 Used_RunID에 추가 (이후 동일 RunID 재사용 차단)
+        addUsedRunId(job.runId!, imageTag);
       } else {
         await runCommand('sh /app/src/scripts/deploy-Dev.sh');
       }
@@ -319,6 +396,46 @@ const devQueue     = new DeployQueue('dev');
 writeQueueToFile('backend', []);
 writeQueueToFile('dev', []);
 
+// ─── 서버 시작 시 Used_RunID 초기화 ──────────────────────────────────────
+
+/**
+ * 서버 시작 시 GitHub API로 최근 완료된 B-Prod 워크플로우 Run들을 조회.
+ * 기존 USED_RunID_Backend가 비어있을 경우 초기 데이터로 채워
+ * 서버 재시작 직후의 공백 기간을 방지.
+ */
+const initUsedRunIds = async () => {
+  const existing = readUsedRunIds();
+  if (existing.size > 0) {
+    console.log(`>> Used_RunID 초기화 스킵 (기존 데이터 ${existing.size}개 존재)`);
+    return;
+  }
+
+  try {
+    const { data } = await axios.get(
+      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/B-Prod.yml/runs?status=success&per_page=10`,
+      { headers: { Authorization: `Bearer ${GITHUB_TOKEN}` } }
+    );
+
+    const runIds = new Map<string, string>();
+    for (const run of data.workflow_runs) {
+      const sha = run.head_sha.slice(0, 7);
+      if (await checkImageExists(sha)) {
+        runIds.set(String(run.id), sha);
+        console.log(`>> Used_RunID 초기화: (runId: ${run.id}, sha: ${sha})`);
+      }
+    }
+
+    if (runIds.size > 0) {
+      writeUsedRunIds(runIds);
+      console.log(`>> Used_RunID 초기화 완료 (${runIds.size}개 등록)`);
+    } else {
+      console.log(`>> Used_RunID 초기화: GHCR에 일치하는 이미지 없음`);
+    }
+  } catch (err: any) {
+    console.error(`>> Used_RunID 초기화 실패: ${err.message}`);
+  }
+};
+
 // ─── 설정 파일 감시 ──────────────────────────────────────────────────────
 
 watchFile(STATUS_FILE, { interval: 1000 }, () => {
@@ -336,9 +453,10 @@ watchFile(STATUS_FILE, { interval: 1000 }, () => {
     backendQueue.onSettingsChanged(prev, next);
     devQueue.onSettingsChanged(prev, next);
 
-    // A 관리자 롤백 감지 : ROLLBACK_Backend에 SHA가 입력되면 즉시 롤백 실행
-    if (!prev.rollbackBackend && next.rollbackBackend) {
-      console.log(`>> 롤백 감지 (sha: ${next.rollbackBackend})`);
+    // A 관리자 롤백 감지 : ROLLBACK_Backend에 순수 RunID가 입력된 경우만 트리거
+    // '[' 문자가 없는 경우만 = 완료/실패 결과 갱신으로 인한 재트리거 방지
+    if (!prev.rollbackBackend && next.rollbackBackend && !next.rollbackBackend.includes('[')) {
+      console.log(`>> 롤백 감지 (runId: ${next.rollbackBackend})`);
       handleRollback(next.rollbackBackend);
     }
   } catch (err: any) {
@@ -349,27 +467,38 @@ watchFile(STATUS_FILE, { interval: 1000 }, () => {
 // ─── A 관리자 롤백 처리 ──────────────────────────────────────────────────
 
 /**
- * A 관리자가 deploy_status.txt의 ROLLBACK_Backend에 RunID를 직접 입력하면
- * 해당 RunID의 SHA를 추출하여 즉시 롤백 실행.
- * RunID는 GitHub Actions에서 추적이 용이하여 SHA 대신 사용.
- * Discord 승인 절차 없이 A 관리자만 실행 가능 (SSH 접속 권한 = 롤백 권한)
+ * A 관리자가 ROLLBACK_Backend에 RunID를 입력하면 즉시 롤백 실행.
+ * Used_RunID에 등록된 RunID만 롤백 허용 (한번도 배포된 적 없는 RunID 차단).
+ * SHA는 Used_RunID에서 직접 조회 (GitHub API 재호출 불필요).
+ * Discord 승인 절차 없이 A 관리자만 실행 가능 (SSH 접속 권한 = 롤백 권한).
  */
 const handleRollback = async (runId: string) => {
   console.log(`>> 롤백 시작 (runId: ${runId})`);
   try {
-    // RunID → SHA 추출 (SHA보다 RunID가 GitHub Actions에서 추적이 용이)
-    const sha = await extractSha(runId);
+    // Used_RunID 동기화 후 롤백 대상 RunID 확인
+    const usedRunIds = await syncUsedRunIds();
+
+    if (!usedRunIds.has(runId)) {
+      console.error(`>> 롤백 실패: 최근 배포된 적 없는 RunID (runId: ${runId})`);
+      writeRollbackResult(runId, '배포 실패: 배포된 적 없는 RunID');
+      return;
+    }
+
+    // SHA는 Used_RunID에서 직접 조회 (GitHub API 재호출 불필요)
+    const sha = usedRunIds.get(runId)!;
     const auth = Buffer.from(`ldj5098:${GITHUB_TOKEN}`).toString('base64');
     const cfg  = JSON.stringify({ auths: { 'ghcr.io': { auth } } });
     await runCommand(`mkdir -p /root/.docker && echo '${cfg}' > /root/.docker/config.json`);
     const output = await runCommand(`sh /app/src/scripts/deploy-Backend.sh sha-${sha}`);
     console.log(output);
     console.log(`>> 롤백 완료 (runId: ${runId}, sha: ${sha})`);
+    writeRollbackResult(runId, '배포 완료');
   } catch (err: any) {
     console.error(`>> 롤백 실패 (runId: ${runId}): ${err.message}`);
+    writeRollbackResult(runId, `배포 실패: ${err.message}`);
   } finally {
-    // 롤백 완료 후 ROLLBACK_Backend 초기화
-    clearRollback();
+    // writeRollbackResult에서 이미 파일 갱신 완료
+    // clearRollback 불필요 (결과 문구가 남아있어야 check.sh가 감지 가능)
   }
 };
 
@@ -411,7 +540,7 @@ const runCommand = (cmd: string): Promise<string> =>
 
 // ─── 엔드포인트 ──────────────────────────────────────────────────────────
 
-app.post('/deploy', (req, res) => {
+app.post('/deploy', async (req, res) => {
   const { run_id, type, job_id, callback_url } = req.body;
 
   if (!type || !job_id || !callback_url) {
@@ -422,6 +551,20 @@ app.post('/deploy', (req, res) => {
   }
   if (settings.sshAccess) {
     return res.json({ status: 'blocked' });
+  }
+
+  // Backend 배포 시 Used_RunID 검증
+  if (type === 'backend' && run_id) {
+    // 새 요청마다 GHCR 이미지 존재 여부로 Used_RunID 동기화
+    const usedRunIds = await syncUsedRunIds();
+
+    if (usedRunIds.has(run_id)) {
+      // 이미 사용된 RunID → 차단 (롤백은 관리자에게 문의)
+      return res.status(400).json({
+        status: 'rejected',
+        error:  '이미 한번 사용한 RunID입니다. 롤백은 관리자에게 문의하십시오.',
+      });
+    }
   }
 
   const job: DeployJob = {
@@ -446,4 +589,7 @@ app.delete('/queue/:type/:jobId', (req, res) => {
   return res.json({ removed });
 });
 
-app.listen(3000, () => console.log('CD Server 시작 (port 3000)'));
+app.listen(3000, async () => {
+  console.log('CD Server 시작 (port 3000)');
+  await initUsedRunIds();
+});
