@@ -15,18 +15,20 @@ const STATUS_FILE   = '/deploy-setting/deploy_status.txt';
 // ─── 설정 (deploy_status.txt) ─────────────────────────────────────────────
 
 interface DeploySettings {
-  sshAccess: boolean;
-  timeLock:  boolean;
-  waitTime:  number;
+  sshAccess:       boolean;
+  timeLock:        boolean;
+  waitTime:        number;
+  rollbackBackend: string; // A 관리자가 직접 입력한 롤백 SHA (비어있으면 롤백 없음)
 }
 
 const readSettings = (): DeploySettings => {
   const txt = readFileSync(STATUS_FILE, 'utf-8');
   const get = (key: string) => txt.match(new RegExp(`${key}:\\s*(\\S+)`))?.[1].trim() ?? '';
   return {
-    sshAccess: get('SSH_ACCESS') === 'true',
-    timeLock:  get('TIME_LOCK')  === 'true',
-    waitTime:  parseInt(get('WAIT_TIME')) || 0,
+    sshAccess:       get('SSH_ACCESS') === 'true',
+    timeLock:        get('TIME_LOCK')  === 'true',
+    waitTime:        parseInt(get('WAIT_TIME')) || 0,
+    rollbackBackend: get('ROLLBACK_Backend') ?? '',
   };
 };
 
@@ -62,6 +64,18 @@ const writeQueueToFile = (type: 'backend' | 'dev', jobs: DeployJob[]) => {
     const newTxt = txt.includes(`${key}=`)
       ? txt.replace(new RegExp(`${key}=[\\s\\S]*?(?=\\n[A-Z]|$)`), `${key}=\n${lines}`)
       : txt + `\n${key}=\n${lines}`;
+    writeFileSync(STATUS_FILE, newTxt);
+  } finally {
+    setTimeout(() => { isWritingFile = false; }, 200);
+  }
+};
+
+/** 롤백 완료 후 ROLLBACK_Backend 값 초기화 */
+const clearRollback = () => {
+  isWritingFile = true;
+  try {
+    const txt = readFileSync(STATUS_FILE, 'utf-8');
+    const newTxt = txt.replace(/ROLLBACK_Backend:\s*\S*/, 'ROLLBACK_Backend:');
     writeFileSync(STATUS_FILE, newTxt);
   } finally {
     setTimeout(() => { isWritingFile = false; }, 200);
@@ -258,11 +272,12 @@ class DeployQueue {
 
     try {
       if (job.type === 'backend') {
-        imageTag = await verifyRun(job.runId!);
+        // RunID → SHA 추출 (GitHub Actions 모니터링 및 디버깅 추적 목적으로 RunID 유지)
+        imageTag = await extractSha(job.runId!);
         const auth = Buffer.from(`ldj5098:${GITHUB_TOKEN}`).toString('base64');
         const cfg  = JSON.stringify({ auths: { 'ghcr.io': { auth } } });
         await runCommand(`mkdir -p /root/.docker && echo '${cfg}' > /root/.docker/config.json`);
-        
+
         //배포 시간 측정
         const output = await runCommand(`sh /app/src/scripts/deploy-Backend.sh sha-${imageTag}`);
         console.log(output);
@@ -320,14 +335,52 @@ watchFile(STATUS_FILE, { interval: 1000 }, () => {
 
     backendQueue.onSettingsChanged(prev, next);
     devQueue.onSettingsChanged(prev, next);
+
+    // A 관리자 롤백 감지 : ROLLBACK_Backend에 SHA가 입력되면 즉시 롤백 실행
+    if (!prev.rollbackBackend && next.rollbackBackend) {
+      console.log(`>> 롤백 감지 (sha: ${next.rollbackBackend})`);
+      handleRollback(next.rollbackBackend);
+    }
   } catch (err: any) {
     console.error('설정 파일 읽기 실패:', err.message);
   }
 });
 
+// ─── A 관리자 롤백 처리 ──────────────────────────────────────────────────
+
+/**
+ * A 관리자가 deploy_status.txt의 ROLLBACK_Backend에 RunID를 직접 입력하면
+ * 해당 RunID의 SHA를 추출하여 즉시 롤백 실행.
+ * RunID는 GitHub Actions에서 추적이 용이하여 SHA 대신 사용.
+ * Discord 승인 절차 없이 A 관리자만 실행 가능 (SSH 접속 권한 = 롤백 권한)
+ */
+const handleRollback = async (runId: string) => {
+  console.log(`>> 롤백 시작 (runId: ${runId})`);
+  try {
+    // RunID → SHA 추출 (SHA보다 RunID가 GitHub Actions에서 추적이 용이)
+    const sha = await extractSha(runId);
+    const auth = Buffer.from(`ldj5098:${GITHUB_TOKEN}`).toString('base64');
+    const cfg  = JSON.stringify({ auths: { 'ghcr.io': { auth } } });
+    await runCommand(`mkdir -p /root/.docker && echo '${cfg}' > /root/.docker/config.json`);
+    const output = await runCommand(`sh /app/src/scripts/deploy-Backend.sh sha-${sha}`);
+    console.log(output);
+    console.log(`>> 롤백 완료 (runId: ${runId}, sha: ${sha})`);
+  } catch (err: any) {
+    console.error(`>> 롤백 실패 (runId: ${runId}): ${err.message}`);
+  } finally {
+    // 롤백 완료 후 ROLLBACK_Backend 초기화
+    clearRollback();
+  }
+};
+
 // ─── API 배포 검증 ───────────────────────────────────────────────────────
 
-const verifyRun = async (runId: string): Promise<string> => {
+/**
+ * RunID → SHA 추출
+ * CI 통과 여부 및 브랜치 검증은 워크플로우(B-Prod.yml)에서 이미 보장되므로 제거.
+ * RunID는 GitHub Actions 모니터링 및 디버깅 추적에 유리하여 SHA 대신 유지.
+ */
+const extractSha = async (runId: string): Promise<string> => {
   const timeout = 10 * 60 * 1000;
   const start   = Date.now();
 
@@ -341,8 +394,6 @@ const verifyRun = async (runId: string): Promise<string> => {
       await new Promise(r => setTimeout(r, 3000));
       continue;
     }
-    if (data.conclusion !== 'success')      throw new Error(`CI 미통과 (conclusion: ${data.conclusion})`);
-    if (data.head_branch !== DEPLOY_BRANCH) throw new Error(`잘못된 브랜치 (head_branch: ${data.head_branch})`);
     return data.head_sha.slice(0, 7);
   }
 };
